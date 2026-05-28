@@ -122,7 +122,7 @@ Provide complete eBay listing details. Respond ONLY with valid JSON, no markdown
 }}"""
     content.append({"type": "text", "text": prompt})
     payload = {
-        "model": "claude-sonnet-4-20250514",
+        "claude-sonnet-4-6",
         "max_tokens": 1500,
         "messages": [{"role": "user", "content": content}]
     }
