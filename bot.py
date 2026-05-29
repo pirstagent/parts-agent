@@ -13,6 +13,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")
 EBAY_APP_ID = os.environ.get("EBAY_APP_ID")
 EBAY_USER_TOKEN = os.environ.get("EBAY_USER_TOKEN")
+EBAY_OAUTH_TOKEN = os.environ.get("EBAY_OAUTH_TOKEN")
 
 user_sessions = {}
 
@@ -166,53 +167,49 @@ async def call_claude(part_number, photos):
 
 
 async def create_ebay_draft(listing):
-    if not EBAY_USER_TOKEN:
-        return "NO_TOKEN"
+    if not EBAY_OAUTH_TOKEN:
+        return "NO_OAUTH_TOKEN"
     headers = {
-        "Authorization": "IAF " + EBAY_USER_TOKEN,
-        "Content-Type": "text/xml",
-        "X-EBAY-API-SITEID": "0",
-        "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
-        "X-EBAY-API-CALL-NAME": "AddItem",
-        "X-EBAY-API-APP-NAME": EBAY_APP_ID or "",
+        "Authorization": "Bearer " + EBAY_OAUTH_TOKEN,
+        "Content-Type": "application/json",
+        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US"
     }
     title = listing.get("title", "Auto Part")[:80]
     description = listing.get("description", "")
-    category_id = listing.get("category_id", "6030")
     price = listing.get("suggested_price", 25)
-    xml_body = (
-        '<?xml version="1.0" encoding="utf-8"?>'
-        '<AddItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
-        "<RequesterCredentials>"
-        "<eBayAuthToken>" + EBAY_USER_TOKEN + "</eBayAuthToken>"
-        "</RequesterCredentials>"
-        "<Item>"
-        "<Title>" + title + "</Title>"
-        "<Description><![CDATA[" + description + "]]></Description>"
-        "<PrimaryCategory><CategoryID>" + str(category_id) + "</CategoryID></PrimaryCategory>"
-        "<StartPrice>" + str(price) + "</StartPrice>"
-        "<Country>US</Country>"
-        "<Currency>USD</Currency>"
-        "<DispatchTimeMax>3</DispatchTimeMax>"
-        "<ListingDuration>GTC</ListingDuration>"
-        "<ListingType>FixedPriceItem</ListingType>"
-        "<Quantity>1</Quantity>"
-        "<ShipToLocations>US</ShipToLocations>"
-        "</Item>"
-        "</AddItemRequest>"
-    )
+    condition = listing.get("condition", "Used")
+    condition_id = "3000" if condition == "Used" else "1000"
+    body = {
+        "product": {
+            "title": title,
+            "description": description,
+            "aspects": {}
+        },
+        "condition": condition_id,
+        "categoryId": listing.get("category_id", "6030"),
+        "format": "FIXED_PRICE",
+        "listingPolicies": {},
+        "pricingSummary": {
+            "price": {
+                "value": str(price),
+                "currency": "USD"
+            }
+        },
+        "quantityLimitPerBuyer": 1
+    }
     try:
-        import re
         response = requests.post(
-            "https://api.ebay.com/ws/api.dll",
+            "https://api.ebay.com/sell/inventory/v1/offer",
             headers=headers,
-            data=xml_body.encode("utf-8"),
+            json=body,
             timeout=30
         )
-        match = re.search(r"<ItemID>(\d+)</ItemID>", response.text)
-        if match:
-            return match.group(1)
-        return "DRAFT_SAVED"
+        logger.info("eBay response: " + response.text[:300])
+        result = response.json()
+        offer_id = result.get("offerId", "")
+        if offer_id:
+            return "OFFER_" + offer_id
+        return "DRAFT_SAVED: " + response.text[:100]
     except Exception as e:
         logger.error("eBay error: " + str(e))
         return "DRAFT_LOCAL"
