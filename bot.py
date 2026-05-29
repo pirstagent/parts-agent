@@ -2,6 +2,7 @@ import os
 import logging
 import base64
 import json
+import re
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
@@ -13,7 +14,6 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")
 EBAY_APP_ID = os.environ.get("EBAY_APP_ID")
 EBAY_USER_TOKEN = os.environ.get("EBAY_USER_TOKEN")
-EBAY_OAUTH_TOKEN = os.environ.get("EBAY_OAUTH_TOKEN")
 
 user_sessions = {}
 
@@ -94,8 +94,8 @@ async def process_listing(user_id, message):
             "ფასი: $" + str(listing.get("suggested_price", "N/A")) + "\n" +
             "მდგომარეობა: " + listing.get("condition", "Used") + "\n\n" +
             "თავსებადობა:\n" + compat_text + "\n\n" +
-            "Draft ID: " + str(draft_id) + "\n" +
-            "eBay Seller Hub-ში გააქტიურე!"
+            "eBay Item ID: " + str(draft_id) + "\n" +
+            "eBay Seller Hub-ში შეამოწმე!"
         )
         await message.reply_text(result)
     except Exception as e:
@@ -125,8 +125,8 @@ async def call_claude(part_number, photos):
         "Provide complete eBay listing details.\n"
         "Respond ONLY with valid JSON, no markdown, no extra text:\n"
         "{\n"
-        '  "title": "eBay title max 80 chars SEO optimized",\n'
-        '  "description": "Detailed description 3-4 paragraphs",\n'
+        '  "title": "eBay title max 80 chars SEO optimized with part number",\n'
+        '  "description": "Detailed HTML description 3-4 paragraphs",\n'
         '  "category_id": "6030",\n'
         '  "condition": "Used",\n'
         '  "suggested_price": 25,\n'
@@ -167,52 +167,87 @@ async def call_claude(part_number, photos):
 
 
 async def create_ebay_draft(listing):
-    if not EBAY_OAUTH_TOKEN:
-        return "NO_OAUTH_TOKEN"
-    headers = {
-        "Authorization": "Bearer " + EBAY_OAUTH_TOKEN,
-        "Content-Type": "application/json",
-        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US"
-    }
+    if not EBAY_USER_TOKEN:
+        return "NO_USER_TOKEN"
+
     title = listing.get("title", "Auto Part")[:80]
-    description = listing.get("description", "")
+    description = listing.get("description", "No description")
+    category_id = listing.get("category_id", "6030")
     price = listing.get("suggested_price", 25)
-    condition = listing.get("condition", "Used")
-    condition_id = "3000" if condition == "Used" else "1000"
-    body = {
-        "product": {
-            "title": title,
-            "description": description,
-            "aspects": {}
-        },
-        "condition": condition_id,
-        "categoryId": listing.get("category_id", "6030"),
-        "format": "FIXED_PRICE",
-        "listingPolicies": {},
-        "pricingSummary": {
-            "price": {
-                "value": str(price),
-                "currency": "USD"
-            }
-        },
-        "quantityLimitPerBuyer": 1
+
+    xml_request = """<?xml version="1.0" encoding="utf-8"?>
+<AddItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <RequesterCredentials>
+    <eBayAuthToken>""" + EBAY_USER_TOKEN + """</eBayAuthToken>
+  </RequesterCredentials>
+  <ErrorLanguage>en_US</ErrorLanguage>
+  <WarningLevel>High</WarningLevel>
+  <Item>
+    <Title>""" + title + """</Title>
+    <Description><![CDATA[""" + description + """]]></Description>
+    <PrimaryCategory>
+      <CategoryID>""" + str(category_id) + """</CategoryID>
+    </PrimaryCategory>
+    <StartPrice>""" + str(price) + """</StartPrice>
+    <CategoryMappingAllowed>true</CategoryMappingAllowed>
+    <ConditionID>3000</ConditionID>
+    <Country>US</Country>
+    <Currency>USD</Currency>
+    <DispatchTimeMax>3</DispatchTimeMax>
+    <ListingDuration>GTC</ListingDuration>
+    <ListingType>FixedPriceItem</ListingType>
+    <PaymentMethods>PayPal</PaymentMethods>
+    <PayPalEmailAddress>gelenidze@icloud.com</PayPalEmailAddress>
+    <PictureDetails>
+      <GalleryType>Gallery</GalleryType>
+    </PictureDetails>
+    <PostalCode>90001</PostalCode>
+    <Quantity>1</Quantity>
+    <ReturnPolicy>
+      <ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption>
+      <RefundOption>MoneyBack</RefundOption>
+      <ReturnsWithinOption>Days_30</ReturnsWithinOption>
+      <ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption>
+    </ReturnPolicy>
+    <ShippingDetails>
+      <ShippingType>Flat</ShippingType>
+      <ShippingServiceOptions>
+        <ShippingServicePriority>1</ShippingServicePriority>
+        <ShippingService>USPSPriority</ShippingService>
+        <ShippingServiceCost>9.99</ShippingServiceCost>
+      </ShippingServiceOptions>
+    </ShippingDetails>
+    <ShipToLocations>US</ShipToLocations>
+    <Site>US</Site>
+  </Item>
+</AddItemRequest>"""
+
+    headers = {
+        "X-EBAY-API-SITEID": "0",
+        "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
+        "X-EBAY-API-CALL-NAME": "AddItem",
+        "X-EBAY-API-APP-NAME": EBAY_APP_ID or "",
+        "Content-Type": "text/xml"
     }
+
     try:
         response = requests.post(
-            "https://api.ebay.com/sell/inventory/v1/offer",
+            "https://api.ebay.com/ws/api.dll",
             headers=headers,
-            json=body,
+            data=xml_request.encode("utf-8"),
             timeout=30
         )
-        logger.info("eBay response: " + response.text[:300])
-        result = response.json()
-        offer_id = result.get("offerId", "")
-        if offer_id:
-            return "OFFER_" + offer_id
-        return "DRAFT_SAVED: " + response.text[:100]
+        logger.info("eBay XML response: " + response.text[:500])
+        match = re.search(r"<ItemID>(\d+)</ItemID>", response.text)
+        if match:
+            return match.group(1)
+        errors = re.findall(r"<ShortMessage>(.*?)</ShortMessage>", response.text)
+        if errors:
+            return "eBay error: " + errors[0]
+        return "SAVED (no ID returned)"
     except Exception as e:
         logger.error("eBay error: " + str(e))
-        return "DRAFT_LOCAL"
+        return "LOCAL_DRAFT"
 
 
 def main():
