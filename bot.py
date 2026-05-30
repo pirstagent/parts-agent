@@ -18,9 +18,6 @@ EBAY_CERT_ID = os.environ.get("EBAY_CERT_ID")
 EBAY_USER_TOKEN = os.environ.get("EBAY_USER_TOKEN")
 PAYPAL_EMAIL = os.environ.get("PAYPAL_EMAIL", "zurabgelenidze1@gmail.com")
 
-# უფასო საჯარო API გასაღები ფოტოების ჰოსტინგისთვის
-IMGBB_API_KEY = "6b4477839ec9cc167a99650b91df0995"
-
 user_sessions = {}
 
 
@@ -31,7 +28,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- Part Number (მაგ: 37230-BZ040)\n"
         "- ან ფოტო ნაწილისა\n"
         "- ან ორივე ერთად\n\n"
-        "მე მოვიძიებ ინფორმაციას და მოვამზადებ eBay-ის დრაფტს ფოტოებით!"
+        "მე მოვიძიებ ინფორმაციას და შევინახავ eBay-ის დრაფტებში!"
     )
 
 
@@ -71,29 +68,14 @@ async def process_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-    await query.message.reply_text("AI მუშაობს ინფორმაციის მოძიებაზე და ფოტოების მომზადებაზე...")
+    await query.message.reply_text("AI მუშაობს ინფორმაციის მოძიებაზე...")
     await process_listing(user_id, query.message)
 
 
 async def process_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    await update.message.reply_text("AI მუშაობს ინფორმაციის მოძიებაზე და ფოტოების მომზადებაზე...")
+    await update.message.reply_text("AI მუშაობს ინფორმაციის მოძიებაზე...")
     await process_listing(user_id, update.message)
-
-
-def upload_to_imgbb(photo_b64):
-    try:
-        url = "https://api.imgbb.com/1/upload"
-        payload = {
-            "key": IMGBB_API_KEY,
-            "image": photo_b64
-        }
-        res = requests.post(url, data=payload, timeout=20)
-        res_json = res.json()
-        return res_json.get("data", {}).get("url")
-    except Exception as e:
-        logger.error(f"ImgBB upload error: {e}")
-        return None
 
 
 async def process_listing(user_id, message):
@@ -104,17 +86,8 @@ async def process_listing(user_id, message):
         await message.reply_text("გამომიგზავნე Part Number ან ფოტო პირველ რიგში!")
         return
     try:
-        # ფოტოების ატვირთვა ჰოსტინგზე eBay-სთვის
-        uploaded_urls = []
-        if photos:
-            await message.reply_text("მიმდინარეობს ფოტოების ატვირთვა eBay-ზე...")
-            for p_b64 in photos[:4]:
-                img_url = upload_to_imgbb(p_b64)
-                if img_url:
-                    uploaded_urls.append(img_url)
-
         listing = await call_claude(part_number, photos)
-        draft_id = await create_ebay_draft(listing, uploaded_urls)
+        draft_id = await create_ebay_draft(listing)
         user_sessions[user_id] = {"part_number": None, "photos": []}
         compat_list = listing.get("compatibility", [])[:5]
         compat_text = "\n".join("- " + c for c in compat_list)
@@ -206,7 +179,7 @@ async def call_claude(part_number, photos):
     return json.loads(text)
 
 
-async def create_ebay_draft(listing, image_urls):
+async def create_ebay_draft(listing):
     if not EBAY_USER_TOKEN:
         return "NO_USER_TOKEN"
 
@@ -222,7 +195,6 @@ async def create_ebay_draft(listing, image_urls):
         
     part_num = listing.get("part_number", listing.get("oem_number", "Universal"))
 
-    # სრული Item Specifics სტრუქტურა ყველა საჭირო ველით
     item_specifics = (
         "<ItemSpecifics>"
         "<NameValueList><Name>Brand</Name><Value>" + brand + "</Value></NameValueList>"
@@ -231,106 +203,4 @@ async def create_ebay_draft(listing, image_urls):
         "<NameValueList><Name>Grade</Name><Value>A</Value></NameValueList>"
         "<NameValueList><Name>Quality</Name><Value>Excellent</Value></NameValueList>"
         "<NameValueList><Name>Certification</Name><Value>OEM Genuine</Value></NameValueList>"
-        "<NameValueList><Name>OE/OEM Part Number</Name><Value>" + part_num + "</Value></NameValueList>"
-        "</ItemSpecifics>"
-    )
-
-    # ფოტოების ბლოკის მომზადება XML-ისთვის
-    picture_details = ""
-    if image_urls:
-        picture_details = "<PictureDetails>"
-        for url in image_urls:
-            picture_details += f"<PictureURL>{url}</PictureURL>"
-        picture_details += "</PictureDetails>"
-
-    xml_request = (
-        '<?xml version="1.0" encoding="utf-8"?>'
-        '<AddFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
-        "<RequesterCredentials>"
-        "<eBayAuthToken>" + EBAY_USER_TOKEN + "</eBayAuthToken>"
-        "</RequesterCredentials>"
-        "<ErrorLanguage>en_US</ErrorLanguage>"
-        "<WarningLevel>High</WarningLevel>"
-        "<Item>"
-        "<Title>" + title + "</Title>"
-        "<Description><![CDATA[" + description + "]]></Description>"
-        "<PrimaryCategory><CategoryID>262</CategoryID></PrimaryCategory>"
-        "<StartPrice>" + str(price) + "</StartPrice>"
-        "<CategoryMappingAllowed>true</CategoryMappingAllowed>"
-        "<ConditionID>" + condition_id + "</ConditionID>"
-        + item_specifics 
-        + picture_details +
-        "<Country>US</Country>"
-        "<Currency>USD</Currency>"
-        "<DispatchTimeMax>3</DispatchTimeMax>"
-        "<ListingDuration>GTC</ListingDuration>"
-        "<ListingType>FixedPriceItem</ListingType>"
-        "<PaymentMethods>PayPal</PaymentMethods>"
-        "<PayPalEmailAddress>" + PAYPAL_EMAIL + "</PayPalEmailAddress>"
-        "<PostalCode>10965</PostalCode>"
-        "<Quantity>1</Quantity>"
-        "<ReturnPolicy>"
-        "<ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption>"
-        "<RefundOption>MoneyBack</RefundOption>"
-        "<ReturnsWithinOption>Days_30</ReturnsWithinOption>"
-        "<ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption>"
-        "</ReturnPolicy>"
-        "<ShippingDetails>"
-        "<ShippingType>Flat</ShippingType>"
-        "<ShippingServiceOptions>"
-        "<ShippingServicePriority>1</ShippingServicePriority>"
-        "<ShippingService>USPSPriority</ShippingService>"
-        "<ShippingServiceCost>9.99</ShippingServiceCost>"
-        "</ShippingServiceOptions>"
-        "</ShippingDetails>"
-        "<ShipToLocations>US</ShipToLocations>"
-        "<Site>US</Site>"
-        "</Item>"
-        '</AddFixedPriceItemRequest>'
-    )
-
-    headers = {
-        "X-EBAY-API-SITEID": "0",
-        "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
-        "X-EBAY-API-CALL-NAME": "AddFixedPriceItem",
-        "X-EBAY-API-APP-NAME": EBAY_APP_ID or "",
-        "X-EBAY-API-DEV-NAME": EBAY_DEV_ID or "",
-        "X-EBAY-API-CERT-NAME": EBAY_CERT_ID or "",
-        "Content-Type": "text/xml"
-    }
-
-    try:
-        response = requests.post(
-            "https://api.ebay.com/ws/api.dll",
-            headers=headers,
-            data=xml_request.encode("utf-8"),
-            timeout=30
-        )
-        logger.info("eBay response: " + response.text[:600])
-        
-        match = re.search(r"<ItemID>(\d+)</ItemID>", response.text)
-        if match:
-            return match.group(1)
-            
-        errors = re.findall(r"<ShortMessage>(.*?)</ShortMessage>", response.text)
-        if errors:
-            return "eBay პასუხი: " + " | ".join(errors[:3])
-        return "მომზადებულია"
-    except Exception as e:
-        logger.error("eBay error: " + str(e))
-        return "LOCAL_DRAFT"
-
-
-def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("process", process_command))
-    app.add_handler(CallbackQueryHandler(process_callback, pattern="process"))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    logger.info("Bot started!")
-    app.run_polling(drop_pending_updates=True)
-
-
-if __name__ == "__main__":
-    main()
+        "<NameValueList>
