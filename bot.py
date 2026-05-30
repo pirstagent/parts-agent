@@ -126,7 +126,7 @@ async def call_claude(part_number, photos):
         "You are an expert eBay auto parts specialist. Analyze this auto part.\n"
         "Part Number: " + (part_number or "See image") + "\n\n"
         "Provide complete eBay listing details.\n"
-        "Use category_id 262 which is eBay Parts and Accessories main category.\n\n"
+        "Use category_id 262 for Parts and Accessories.\n\n"
         "Respond ONLY with valid JSON, no markdown, no extra text:\n"
         "{\n"
         '  "title": "eBay title max 80 chars SEO optimized with part number",\n'
@@ -136,8 +136,9 @@ async def call_claude(part_number, photos):
         '  "suggested_price": 25,\n'
         '  "compatibility": ["2010 Toyota Camry", "2011 Toyota Camry"],\n'
         '  "oem_number": "OEM number if known",\n'
-        '  "brand": "brand name",\n'
-        '  "condition_description": "condition notes"\n'
+        '  "brand": "Toyota",\n'
+        '  "part_number": "exact part number",\n'
+        '  "condition_description": "New OEM part in original packaging"\n'
         "}"
     )
     content.append({"type": "text", "text": prompt})
@@ -179,6 +180,19 @@ async def create_ebay_draft(listing):
     price = listing.get("suggested_price", 25)
     condition = listing.get("condition", "Used")
     condition_id = "3000" if condition == "Used" else "1000"
+    brand = listing.get("brand", "Unbranded")
+    part_num = listing.get("part_number", listing.get("oem_number", ""))
+
+    item_specifics = (
+        "<ItemSpecifics>"
+        "<NameValueList><Name>Brand</Name><Value>" + brand + "</Value></NameValueList>"
+        "<NameValueList><Name>Placement on Vehicle</Name><Value>Rear</Value></NameValueList>"
+        "<NameValueList><Name>Manufacturer Part Number</Name><Value>" + part_num + "</Value></NameValueList>"
+        "<NameValueList><Name>Quality</Name><Value>OEM</Value></NameValueList>"
+        "<NameValueList><Name>Certification</Name><Value>OEM</Value></NameValueList>"
+        "<NameValueList><Name>Country/Region of Manufacture</Name><Value>Japan</Value></NameValueList>"
+        "</ItemSpecifics>"
+    )
 
     xml_request = (
         '<?xml version="1.0" encoding="utf-8"?>'
@@ -191,12 +205,11 @@ async def create_ebay_draft(listing):
         "<Item>"
         "<Title>" + title + "</Title>"
         "<Description><![CDATA[" + description + "]]></Description>"
-        "<PrimaryCategory>"
-        "<CategoryID>262</CategoryID>"
-        "</PrimaryCategory>"
+        "<PrimaryCategory><CategoryID>262</CategoryID></PrimaryCategory>"
         "<StartPrice>" + str(price) + "</StartPrice>"
         "<CategoryMappingAllowed>true</CategoryMappingAllowed>"
         "<ConditionID>" + condition_id + "</ConditionID>"
+        + item_specifics +
         "<Country>US</Country>"
         "<Currency>USD</Currency>"
         "<DispatchTimeMax>3</DispatchTimeMax>"
@@ -243,13 +256,13 @@ async def create_ebay_draft(listing):
             data=xml_request.encode("utf-8"),
             timeout=30
         )
-        logger.info("eBay response: " + response.text[:500])
+        logger.info("eBay response: " + response.text[:600])
         match = re.search(r"<ItemID>(\d+)</ItemID>", response.text)
         if match:
             return match.group(1)
         errors = re.findall(r"<ShortMessage>(.*?)</ShortMessage>", response.text)
         if errors:
-            return "eBay: " + " | ".join(errors[:2])
+            return "eBay: " + " | ".join(errors[:3])
         return "SAVED"
     except Exception as e:
         logger.error("eBay error: " + str(e))
