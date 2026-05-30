@@ -14,6 +14,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")
 EBAY_APP_ID = os.environ.get("EBAY_APP_ID")
 EBAY_USER_TOKEN = os.environ.get("EBAY_USER_TOKEN")
+PAYPAL_EMAIL = os.environ.get("PAYPAL_EMAIL", "zurabgelenidze1@gmail.com")
 
 user_sessions = {}
 
@@ -25,7 +26,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- Part Number (მაგ: 37230-BZ040)\n"
         "- ან ფოტო ნაწილისა\n"
         "- ან ორივე ერთად\n\n"
-        "მე ვიპოვი ინფოს და eBay Draft-ში შევინახავ!"
+        "მე ვიპოვი ინფოს და eBay-ზე დავდებ!"
     )
 
 
@@ -89,12 +90,12 @@ async def process_listing(user_id, message):
         compat_list = listing.get("compatibility", [])[:5]
         compat_text = "\n".join("- " + c for c in compat_list)
         result = (
-            "განცხადება მზადაა!\n\n" +
+            "განცხადება გაგზავნილია eBay-ზე!\n\n" +
             listing.get("title", "") + "\n" +
             "ფასი: $" + str(listing.get("suggested_price", "N/A")) + "\n" +
             "მდგომარეობა: " + listing.get("condition", "Used") + "\n\n" +
             "თავსებადობა:\n" + compat_text + "\n\n" +
-            "eBay Item ID: " + str(draft_id) + "\n" +
+            "Item ID: " + str(draft_id) + "\n" +
             "eBay Seller Hub-ში შეამოწმე!"
         )
         await message.reply_text(result)
@@ -174,53 +175,54 @@ async def create_ebay_draft(listing):
     description = listing.get("description", "No description")
     category_id = listing.get("category_id", "6030")
     price = listing.get("suggested_price", 25)
+    condition = listing.get("condition", "Used")
+    condition_id = "3000" if condition == "Used" else "1000"
 
-    xml_request = """<?xml version="1.0" encoding="utf-8"?>
-<AddItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
-  <RequesterCredentials>
-    <eBayAuthToken>""" + EBAY_USER_TOKEN + """</eBayAuthToken>
-  </RequesterCredentials>
-  <ErrorLanguage>en_US</ErrorLanguage>
-  <WarningLevel>High</WarningLevel>
-  <Item>
-    <Title>""" + title + """</Title>
-    <Description><![CDATA[""" + description + """]]></Description>
-    <PrimaryCategory>
-      <CategoryID>""" + str(category_id) + """</CategoryID>
-    </PrimaryCategory>
-    <StartPrice>""" + str(price) + """</StartPrice>
-    <CategoryMappingAllowed>true</CategoryMappingAllowed>
-    <ConditionID>3000</ConditionID>
-    <Country>US</Country>
-    <Currency>USD</Currency>
-    <DispatchTimeMax>3</DispatchTimeMax>
-    <ListingDuration>GTC</ListingDuration>
-    <ListingType>FixedPriceItem</ListingType>
-    <PaymentMethods>PayPal</PaymentMethods>
-    <PayPalEmailAddress>gelenidze@icloud.com</PayPalEmailAddress>
-    <PictureDetails>
-      <GalleryType>Gallery</GalleryType>
-    </PictureDetails>
-    <PostalCode>90001</PostalCode>
-    <Quantity>1</Quantity>
-    <ReturnPolicy>
-      <ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption>
-      <RefundOption>MoneyBack</RefundOption>
-      <ReturnsWithinOption>Days_30</ReturnsWithinOption>
-      <ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption>
-    </ReturnPolicy>
-    <ShippingDetails>
-      <ShippingType>Flat</ShippingType>
-      <ShippingServiceOptions>
-        <ShippingServicePriority>1</ShippingServicePriority>
-        <ShippingService>USPSPriority</ShippingService>
-        <ShippingServiceCost>9.99</ShippingServiceCost>
-      </ShippingServiceOptions>
-    </ShippingDetails>
-    <ShipToLocations>US</ShipToLocations>
-    <Site>US</Site>
-  </Item>
-</AddItemRequest>"""
+    xml_request = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<AddItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+        "<RequesterCredentials>"
+        "<eBayAuthToken>" + EBAY_USER_TOKEN + "</eBayAuthToken>"
+        "</RequesterCredentials>"
+        "<ErrorLanguage>en_US</ErrorLanguage>"
+        "<WarningLevel>High</WarningLevel>"
+        "<Item>"
+        "<Title>" + title + "</Title>"
+        "<Description><![CDATA[" + description + "]]></Description>"
+        "<PrimaryCategory>"
+        "<CategoryID>" + str(category_id) + "</CategoryID>"
+        "</PrimaryCategory>"
+        "<StartPrice>" + str(price) + "</StartPrice>"
+        "<CategoryMappingAllowed>true</CategoryMappingAllowed>"
+        "<ConditionID>" + condition_id + "</ConditionID>"
+        "<Country>US</Country>"
+        "<Currency>USD</Currency>"
+        "<DispatchTimeMax>3</DispatchTimeMax>"
+        "<ListingDuration>GTC</ListingDuration>"
+        "<ListingType>FixedPriceItem</ListingType>"
+        "<PaymentMethods>PayPal</PaymentMethods>"
+        "<PayPalEmailAddress>" + PAYPAL_EMAIL + "</PayPalEmailAddress>"
+        "<PostalCode>90001</PostalCode>"
+        "<Quantity>1</Quantity>"
+        "<ReturnPolicy>"
+        "<ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption>"
+        "<RefundOption>MoneyBack</RefundOption>"
+        "<ReturnsWithinOption>Days_30</ReturnsWithinOption>"
+        "<ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption>"
+        "</ReturnPolicy>"
+        "<ShippingDetails>"
+        "<ShippingType>Flat</ShippingType>"
+        "<ShippingServiceOptions>"
+        "<ShippingServicePriority>1</ShippingServicePriority>"
+        "<ShippingService>USPSPriority</ShippingService>"
+        "<ShippingServiceCost>9.99</ShippingServiceCost>"
+        "</ShippingServiceOptions>"
+        "</ShippingDetails>"
+        "<ShipToLocations>US</ShipToLocations>"
+        "<Site>US</Site>"
+        "</Item>"
+        "</AddItemRequest>"
+    )
 
     headers = {
         "X-EBAY-API-SITEID": "0",
@@ -237,14 +239,14 @@ async def create_ebay_draft(listing):
             data=xml_request.encode("utf-8"),
             timeout=30
         )
-        logger.info("eBay XML response: " + response.text[:500])
+        logger.info("eBay response: " + response.text[:500])
         match = re.search(r"<ItemID>(\d+)</ItemID>", response.text)
         if match:
             return match.group(1)
         errors = re.findall(r"<ShortMessage>(.*?)</ShortMessage>", response.text)
         if errors:
-            return "eBay error: " + errors[0]
-        return "SAVED (no ID returned)"
+            return "eBay: " + " | ".join(errors[:2])
+        return "SAVED"
     except Exception as e:
         logger.error("eBay error: " + str(e))
         return "LOCAL_DRAFT"
