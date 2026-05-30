@@ -186,8 +186,6 @@ async def create_ebay_draft(listing):
     title = listing.get("title", "Auto Part")[:80]
     description = listing.get("description", "No description")
     price = listing.get("suggested_price", 25)
-    condition = listing.get("condition", "Used")
-    condition_id = "3000" if condition == "Used" else "1000"
     
     brand = listing.get("brand", "Unbranded")
     if brand.upper() == "OEM" or not brand:
@@ -227,7 +225,6 @@ async def create_ebay_draft(listing):
         "<PrimaryCategory><CategoryID>262</CategoryID></PrimaryCategory>"
         "<StartPrice>" + str(price) + "</StartPrice>"
         "<CategoryMappingAllowed>true</CategoryMappingAllowed>"
-        "<ConditionID>" + condition_id + "</ConditionID>"
         + item_specifics + picture_details +
         "<Country>US</Country>"
         "<Currency>USD</Currency>"
