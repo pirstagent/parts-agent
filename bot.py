@@ -124,11 +124,20 @@ async def call_claude(part_number, photos):
         "You are an expert eBay auto parts specialist. Analyze this auto part.\n"
         "Part Number: " + (part_number or "See image") + "\n\n"
         "Provide complete eBay listing details.\n"
+        "For category_id use ONLY these valid eBay Motors categories:\n"
+        "33743 = Car and Truck Parts and Accessories (general)\n"
+        "179753 = Suspension and Steering\n"
+        "14978 = Brakes\n"
+        "42614 = Engines and Engine Parts\n"
+        "33640 = Transmission and Drivetrain\n"
+        "239906 = Cooling System\n"
+        "33596 = Electrical\n"
+        "Choose the most appropriate category.\n\n"
         "Respond ONLY with valid JSON, no markdown, no extra text:\n"
         "{\n"
         '  "title": "eBay title max 80 chars SEO optimized with part number",\n'
-        '  "description": "Detailed HTML description 3-4 paragraphs",\n'
-        '  "category_id": "6030",\n'
+        '  "description": "Detailed description 3-4 paragraphs plain text",\n'
+        '  "category_id": "33743",\n'
         '  "condition": "Used",\n'
         '  "suggested_price": 25,\n'
         '  "compatibility": ["2010 Toyota Camry", "2011 Toyota Camry"],\n'
@@ -173,7 +182,7 @@ async def create_ebay_draft(listing):
 
     title = listing.get("title", "Auto Part")[:80]
     description = listing.get("description", "No description")
-    category_id = listing.get("category_id", "6030")
+    category_id = listing.get("category_id", "33743")
     price = listing.get("suggested_price", 25)
     condition = listing.get("condition", "Used")
     condition_id = "3000" if condition == "Used" else "1000"
