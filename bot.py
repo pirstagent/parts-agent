@@ -144,10 +144,10 @@ async def create_ebay_draft(listing):
     )
     xml_request = (
         '<?xml version="1.0" encoding="utf-8"?>'
-        '<AddItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+        '<AddFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
         f"<RequesterCredentials><eBayAuthToken>{EBAY_USER_TOKEN}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
-        f"<Item><Title>{title}</Title><Description><![CDATA[{description}]]></Description>"
+        f"<Item><Title>{title}</Title><Description><![CDATA[" + description + "]]></Description>"
         f"<PrimaryCategory><CategoryID>262</CategoryID></PrimaryCategory><StartPrice>{price}</StartPrice>"
         f"<CategoryMappingAllowed>true</CategoryMappingAllowed>{item_specifics}{picture_details}"
         f"<Country>US</Country><Currency>USD</Currency><DispatchTimeMax>3</DispatchTimeMax>"
@@ -158,10 +158,10 @@ async def create_ebay_draft(listing):
         f"<ReturnsWithinOption>Days_30</ReturnsWithinOption><ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption></ReturnPolicy>"
         f"<ShippingDetails><ShippingType>Flat</ShippingType><ShippingServiceOptions><ShippingServicePriority>1</ShippingServicePriority>"
         f"<ShippingService>USPSPriority</ShippingService><ShippingServiceCost>9.99</ShippingServiceCost></ShippingServiceOptions></ShippingDetails>"
-        f"<ShipToLocations>US</ShipToLocations><Site>US</Site></Item><IsDraft>true</IsDraft></AddItemRequest>"
+        f"<ShipToLocations>US</ShipToLocations><Site>US</Site></Item></AddFixedPriceItemRequest>"
     )
     headers = {
-        "X-EBAY-API-SITEID": "0", "X-EBAY-API-COMPATIBILITY-LEVEL": "967", "X-EBAY-API-CALL-NAME": "AddItem",
+        "X-EBAY-API-SITEID": "0", "X-EBAY-API-COMPATIBILITY-LEVEL": "967", "X-EBAY-API-CALL-NAME": "AddFixedPriceItem",
         "X-EBAY-API-APP-NAME": EBAY_APP_ID or "", "X-EBAY-API-DEV-NAME": EBAY_DEV_ID or "", "X-EBAY-API-CERT-NAME": EBAY_CERT_ID or "",
         "Content-Type": "text/xml"
     }
