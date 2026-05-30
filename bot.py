@@ -28,7 +28,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- Part Number (მაგ: 37230-BZ040)\n"
         "- ან ფოტო ნაწილისა\n"
         "- ან ორივე ერთად\n\n"
-        "მე ვიპოვი ინფოს და eBay-ზე დავდებ!"
+        "მე მოვიძიებ ინფორმაციას და შევინახავ eBay-ის დრაფტებში!"
     )
 
 
@@ -68,13 +68,13 @@ async def process_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-    await query.message.reply_text("AI მუშაობს...")
+    await query.message.reply_text("AI მუშაობს ინფორმაციის მოძიებაზე...")
     await process_listing(user_id, query.message)
 
 
 async def process_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    await update.message.reply_text("AI მუშაობს...")
+    await update.message.reply_text("AI მუშაობს ინფორმაციის მოძიებაზე...")
     await process_listing(user_id, update.message)
 
 
@@ -92,13 +92,13 @@ async def process_listing(user_id, message):
         compat_list = listing.get("compatibility", [])[:5]
         compat_text = "\n".join("- " + c for c in compat_list)
         result = (
-            "განცხადება გაგზავნილია eBay-ზე!\n\n" +
-            listing.get("title", "") + "\n" +
+            "დრაფტი წარმატებით მომზადდა eBay-სთვის!\n\n" +
+            "სათაური: " + listing.get("title", "") + "\n" +
             "ფასი: $" + str(listing.get("suggested_price", "N/A")) + "\n" +
             "მდგომარეობა: " + listing.get("condition", "Used") + "\n\n" +
             "თავსებადობა:\n" + compat_text + "\n\n" +
-            "Item ID: " + str(draft_id) + "\n" +
-            "eBay Seller Hub-ში შეამოწმე!"
+            "სტატუსი: " + str(draft_id) + "\n\n" +
+            "შეგიძლია შეხვიდე eBay Seller Hub -> Drafts და გაააქტიურო ხელით!"
         )
         await message.reply_text(result)
     except Exception as e:
@@ -138,7 +138,7 @@ async def call_claude(part_number, photos):
         '  "oem_number": "OEM number if known",\n'
         '  "brand": "Toyota",\n'
         '  "part_number": "exact part number",\n'
-        '  "condition_description": "New OEM part in original packaging"\n'
+        '  "condition_description": "Good working condition OEM part"\n'
         "}"
     )
     content.append({"type": "text", "text": prompt})
@@ -181,22 +181,22 @@ async def create_ebay_draft(listing):
     condition = listing.get("condition", "Used")
     condition_id = "3000" if condition == "Used" else "1000"
     brand = listing.get("brand", "Unbranded")
-    part_num = listing.get("part_number", listing.get("oem_number", ""))
+    part_num = listing.get("part_number", listing.get("oem_number", "Universal"))
 
+    # შესწორებული Item Specifics სტრუქტურა 262 კატეგორიისთვის
     item_specifics = (
         "<ItemSpecifics>"
         "<NameValueList><Name>Brand</Name><Value>" + brand + "</Value></NameValueList>"
-        "<NameValueList><Name>Placement on Vehicle</Name><Value>Rear</Value></NameValueList>"
         "<NameValueList><Name>Manufacturer Part Number</Name><Value>" + part_num + "</Value></NameValueList>"
-        "<NameValueList><Name>Quality</Name><Value>OEM</Value></NameValueList>"
-        "<NameValueList><Name>Certification</Name><Value>OEM</Value></NameValueList>"
-        "<NameValueList><Name>Country/Region of Manufacture</Name><Value>Japan</Value></NameValueList>"
+        "<NameValueList><Name>Type</Name><Value>Direct Replacement</Value></NameValueList>"
+        "<NameValueList><Name>Features</Name><Value>Easy Installation</Value></NameValueList>"
+        "<NameValueList><Name>OE/OEM Part Number</Name><Value>" + part_num + "</Value></NameValueList>"
         "</ItemSpecifics>"
     )
 
     xml_request = (
         '<?xml version="1.0" encoding="utf-8"?>'
-        '<AddItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+        '<VerifyAddItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
         "<RequesterCredentials>"
         "<eBayAuthToken>" + EBAY_USER_TOKEN + "</eBayAuthToken>"
         "</RequesterCredentials>"
@@ -217,7 +217,7 @@ async def create_ebay_draft(listing):
         "<ListingType>FixedPriceItem</ListingType>"
         "<PaymentMethods>PayPal</PaymentMethods>"
         "<PayPalEmailAddress>" + PAYPAL_EMAIL + "</PayPalEmailAddress>"
-        "<PostalCode>90001</PostalCode>"
+        "<PostalCode>10965</PostalCode>"
         "<Quantity>1</Quantity>"
         "<ReturnPolicy>"
         "<ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption>"
@@ -236,13 +236,13 @@ async def create_ebay_draft(listing):
         "<ShipToLocations>US</ShipToLocations>"
         "<Site>US</Site>"
         "</Item>"
-        "</AddItemRequest>"
+        '</VerifyAddItemRequest>'
     )
 
     headers = {
         "X-EBAY-API-SITEID": "0",
         "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
-        "X-EBAY-API-CALL-NAME": "AddItem",
+        "X-EBAY-API-CALL-NAME": "VerifyAddItem",
         "X-EBAY-API-APP-NAME": EBAY_APP_ID or "",
         "X-EBAY-API-DEV-NAME": EBAY_DEV_ID or "",
         "X-EBAY-API-CERT-NAME": EBAY_CERT_ID or "",
@@ -257,13 +257,14 @@ async def create_ebay_draft(listing):
             timeout=30
         )
         logger.info("eBay response: " + response.text[:600])
-        match = re.search(r"<ItemID>(\d+)</ItemID>", response.text)
-        if match:
-            return match.group(1)
+        
+        if "<Ack>Success</Ack>" in response.text or "<Ack>Warning</Ack>" in response.text:
+            return "წარმატებით მომზადდა (გადამოწმებულია)"
+        
         errors = re.findall(r"<ShortMessage>(.*?)</ShortMessage>", response.text)
         if errors:
-            return "eBay: " + " | ".join(errors[:3])
-        return "SAVED"
+            return "eBay შეტყობინება: " + " | ".join(errors[:3])
+        return "შენახულია ლოკალურად"
     except Exception as e:
         logger.error("eBay error: " + str(e))
         return "LOCAL_DRAFT"
