@@ -203,4 +203,103 @@ async def create_ebay_draft(listing):
         "<NameValueList><Name>Grade</Name><Value>A</Value></NameValueList>"
         "<NameValueList><Name>Quality</Name><Value>Excellent</Value></NameValueList>"
         "<NameValueList><Name>Certification</Name><Value>OEM Genuine</Value></NameValueList>"
-        "<NameValueList>
+        "<NameValueList><Name>OE/OEM Part Number</Name><Value>" + part_num + "</Value></NameValueList>"
+        "</ItemSpecifics>"
+    )
+
+    picture_details = (
+        "<PictureDetails>"
+        "<PictureURL>https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Car_with_Driver-Side_A-Pillar_Highlighted.jpg/800px-Car_with_Driver-Side_A-Pillar_Highlighted.jpg</PictureURL>"
+        "</PictureDetails>"
+    )
+
+    xml_request = (
+        '<?xml version="1.0" encoding="utf-8"?>'
+        '<AddFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+        "<RequesterCredentials>"
+        "<eBayAuthToken>" + EBAY_USER_TOKEN + "</eBayAuthToken>"
+        "</RequesterCredentials>"
+        "<ErrorLanguage>en_US</ErrorLanguage>"
+        "<WarningLevel>High</WarningLevel>"
+        "<Item>"
+        "<Title>" + title + "</Title>"
+        "<Description><![CDATA[" + description + "]]></Description>"
+        "<PrimaryCategory><CategoryID>262</CategoryID></PrimaryCategory>"
+        "<StartPrice>" + str(price) + "</StartPrice>"
+        "<CategoryMappingAllowed>true</CategoryMappingAllowed>"
+        "<ConditionID>" + condition_id + "</ConditionID>"
+        + item_specifics + picture_details +
+        "<Country>US</Country>"
+        "<Currency>USD</Currency>"
+        "<DispatchTimeMax>3</DispatchTimeMax>"
+        "<ListingDuration>GTC</ListingDuration>"
+        "<ListingType>FixedPriceItem</ListingType>"
+        "<PaymentMethods>PayPal</PaymentMethods>"
+        "<PayPalEmailAddress>" + PAYPAL_EMAIL + "</PayPalEmailAddress>"
+        "<PostalCode>10965</PostalCode>"
+        "<Quantity>1</Quantity>"
+        "<ReturnPolicy>"
+        "<ReturnsAcceptedOption>ReturnsAccepted</ReturnsAcceptedOption>"
+        "<RefundOption>MoneyBack</RefundOption>"
+        "<ReturnsWithinOption>Days_30</ReturnsWithinOption>"
+        "<ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption>"
+        "</ReturnPolicy>"
+        "<ShippingDetails>"
+        "<ShippingType>Flat</ShippingType>"
+        "<ShippingServiceOptions>"
+        "<ShippingServicePriority>1</ShippingServicePriority>"
+        "<ShippingService>USPSPriority</ShippingService>"
+        "<ShippingServiceCost>9.99</ShippingServiceCost>"
+        "</ShippingServiceOptions>"
+        "</ShippingDetails>"
+        "<ShipToLocations>US</ShipToLocations>"
+        "<Site>US</Site>"
+        "</Item>"
+        '</AddFixedPriceItemRequest>'
+    )
+
+    headers = {
+        "X-EBAY-API-SITEID": "0",
+        "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
+        "X-EBAY-API-CALL-NAME": "AddFixedPriceItem",
+        "X-EBAY-API-APP-NAME": EBAY_APP_ID or "",
+        "X-EBAY-API-DEV-NAME": EBAY_DEV_ID or "",
+        "X-EBAY-API-CERT-NAME": EBAY_CERT_ID or "",
+        "Content-Type": "text/xml"
+    }
+
+    try:
+        response = requests.post(
+            "https://api.ebay.com/ws/api.dll",
+            headers=headers,
+            data=xml_request.encode("utf-8"),
+            timeout=30
+        )
+        logger.info("eBay response: " + response.text[:600])
+        
+        match = re.search(r"<ItemID>(\d+)</ItemID>", response.text)
+        if match:
+            return match.group(1)
+            
+        errors = re.findall(r"<ShortMessage>(.*?)</ShortMessage>", response.text)
+        if errors:
+            return "eBay პასუხი: " + " | ".join(errors[:3])
+        return "მომზადებულია"
+    except Exception as e:
+        logger.error("eBay error: " + str(e))
+        return "LOCAL_DRAFT"
+
+
+def main():
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("process", process_command))
+    app.add_handler(CallbackQueryHandler(process_callback, pattern="process"))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    logger.info("Bot started!")
+    app.run_polling(drop_pending_updates=True)
+
+
+if __name__ == "__main__":
+    main()
