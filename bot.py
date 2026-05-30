@@ -126,12 +126,12 @@ async def call_claude(part_number, photos):
         "You are an expert eBay auto parts specialist. Analyze this auto part.\n"
         "Part Number: " + (part_number or "See image") + "\n\n"
         "Provide complete eBay listing details.\n"
-        "Use category_id 6030 for Parts and Accessories on eBay Motors.\n\n"
+        "Use category_id 262 which is eBay Parts and Accessories main category.\n\n"
         "Respond ONLY with valid JSON, no markdown, no extra text:\n"
         "{\n"
         '  "title": "eBay title max 80 chars SEO optimized with part number",\n'
         '  "description": "Detailed description 3-4 paragraphs plain text",\n'
-        '  "category_id": "6030",\n'
+        '  "category_id": "262",\n'
         '  "condition": "Used",\n'
         '  "suggested_price": 25,\n'
         '  "compatibility": ["2010 Toyota Camry", "2011 Toyota Camry"],\n'
@@ -192,7 +192,7 @@ async def create_ebay_draft(listing):
         "<Title>" + title + "</Title>"
         "<Description><![CDATA[" + description + "]]></Description>"
         "<PrimaryCategory>"
-        "<CategoryID>6030</CategoryID>"
+        "<CategoryID>262</CategoryID>"
         "</PrimaryCategory>"
         "<StartPrice>" + str(price) + "</StartPrice>"
         "<CategoryMappingAllowed>true</CategoryMappingAllowed>"
@@ -221,13 +221,13 @@ async def create_ebay_draft(listing):
         "</ShippingServiceOptions>"
         "</ShippingDetails>"
         "<ShipToLocations>US</ShipToLocations>"
-        "<Site>Motors</Site>"
+        "<Site>US</Site>"
         "</Item>"
         "</AddItemRequest>"
     )
 
     headers = {
-        "X-EBAY-API-SITEID": "100",
+        "X-EBAY-API-SITEID": "0",
         "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
         "X-EBAY-API-CALL-NAME": "AddItem",
         "X-EBAY-API-APP-NAME": EBAY_APP_ID or "",
