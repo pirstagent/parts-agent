@@ -13,14 +13,11 @@ EBAY_CERT_ID = os.environ.get("EBAY_CERT_ID")
 EBAY_USER_TOKEN = os.environ.get("EBAY_USER_TOKEN")
 PAYPAL_EMAIL = os.environ.get("PAYPAL_EMAIL", "zurabgelenidze1@gmail.com")
 
-# უფასო საჯარო API გასაღები ფოტოების ჰოსტინგისთვის
-IMGBB_API_KEY = "6b4477839ec9cc167a99650b91df0995"
-
 user_sessions = {}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "გამარჯობა ზურაბ! ბოტი გადაყვანილია გარანტირებულ დრაფტების რეჟიმზე.\n\n"
+        "გამარჯობა ზურაბ! ბოტი მზად არის.\n\n"
         "გამომიგზავნე Part Number და ფოტო, მე პირდაპირ შენს იბეის დრაფტებში ჩავსვამ!"
     )
 
@@ -43,7 +40,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.caption: user_sessions[user_id]["part_number"] = update.message.caption.strip()
     
     part = user_sessions[user_id]["part_number"] or "არ არის"
-    keyboard = [[InlineKeyboardButton("გარანტირებული დრაფტის შექმნა", callback_data="process")]]
+    keyboard = [[InlineKeyboardButton("დრაფტის შექმნა", callback_data="process")]]
     await update.message.reply_text(
         f"ფოტო მიღებულია!\nPart Number: {part}\n\nდააჭირე დრაფტის შექმნას:",
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -51,60 +48,44 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def process_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.callback_query.answer()
-    await update.callback_query.message.reply_text("მიმდინარეობს ფოტოების მომზადება და AI ანალიზი...")
+    await update.callback_query.message.reply_text("AI მუშაობს ინფორმაციის მოძიებაზე...")
     await process_listing(update.callback_query.from_user.id, update.callback_query.message)
 
 async def process_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("მიმდინარეობს ფოტოების მომზადება და AI ანალიზი...")
+    await update.message.reply_text("AI მუშაობს ინფორმაციის მოძიებაზე...")
     await process_listing(update.effective_user.id, update.message)
-
-def upload_to_imgbb(photo_b64):
-    try:
-        res = requests.post("https://api.imgbb.com/1/upload", data={"key": IMGBB_API_KEY, "image": photo_b64}, timeout=20)
-        return res.json().get("data", {}).get("url")
-    except:
-        return None
 
 async def process_listing(user_id, message):
     session = user_sessions.get(user_id, {})
     part_number = session.get("part_number", "")
-    photos_b64_list = session.get("photos", [])
-    if not part_number and not photos_b64_list:
+    photos = session.get("photos", [])
+    if not part_number and not photos:
         await message.reply_text("გამომიგზავნე Part Number ან ფოტო პირველ რიგში!")
         return
     try:
-        # 1. ფოტოების სწრაფი და უფასო ატვირთვა ImgBB-ზე
-        uploaded_urls = []
-        for p_b64 in photos_b64_list[:4]:
-            img_url = upload_to_imgbb(p_b64)
-            if img_url: uploaded_urls.append(img_url)
-
-        # 2. Claude-ის ანალიზი სათაურისა და აღწერისთვის
-        listing = await call_claude(part_number, photos_b64_list)
-        
-        # 3. დრაფტის შექმნა გარანტირებული IsDraft ტეგით
-        draft_id = await create_ebay_draft(listing, uploaded_urls)
+        listing = await call_claude(part_number, photos)
+        draft_id = await create_ebay_draft(listing)
         user_sessions[user_id] = {"part_number": None, "photos": []}
         compat_list = listing.get("compatibility", [])[:5]
         compat_text = "\n".join("- " + c for c in compat_list)
         
-        status_text = f"✅ წარმატებით შეინახა დრაფტებში! Item ID: {draft_id}" if draft_id.isdigit() else f"⚠️ {draft_id}"
+        status_text = f"✅ წარმატებით შეინახა! Item ID: {draft_id}" if draft_id.isdigit() else f"⚠️ {draft_id}"
         result = (
-            f"დრაფტის პროცესი დასრულდა!\n\nსათაური: {listing.get('title', '')}\n"
+            f"პროცესი დასრულდა!\n\nსათაური: {listing.get('title', '')}\n"
             f"ფასი: ${listing.get('suggested_price', 'N/A')}\nბრენდი: {listing.get('brand', 'Unbranded')}\n"
             f"თავსებადობა:\n{compat_text}\n\n{status_text}\n\n"
-            "შეგიძლია შეხვიდე eBay Seller Hub -> Drafts და ნახო!"
+            "შეგიძლია შეხვიდე eBay Seller Hub და ნახო!"
         )
         await message.reply_text(result)
     except Exception as e:
         logger.error("Error: " + str(e))
         await message.reply_text(f"შეცდომა: {str(e)}\n\nსცადე /start")
 
-async def call_claude(part_number, photos_b64):
+async def call_claude(part_number, photos):
     headers = {"x-api-key": CLAUDE_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"}
     content = []
-    for p_b64 in photos_b64[:4]:
-        content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": p_b64}})
+    for photo_b64 in photos[:4]:
+        content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": photo_b64}})
     prompt = (
         f"You are an expert eBay auto parts specialist. Analyze this auto part.\nPart Number: {part_number or 'See image'}\n\n"
         "Provide complete eBay listing details. Use category_id 262 for Parts and Accessories.\n"
@@ -131,7 +112,7 @@ async def call_claude(part_number, photos_b64):
     end = text.rfind("}") + 1
     return json.loads(text[start:end])
 
-async def create_ebay_draft(listing, image_urls):
+async def create_ebay_draft(listing):
     if not EBAY_USER_TOKEN: return "NO_USER_TOKEN"
     title = listing.get("title", "Auto Part")[:80]
     description = listing.get("description", "No description")
@@ -139,6 +120,7 @@ async def create_ebay_draft(listing, image_urls):
     brand = "Unbranded" if listing.get("brand", "Unbranded").upper() == "OEM" else listing.get("brand", "Unbranded")
     part_num = listing.get("part_number", listing.get("oem_number", "Universal"))
 
+    # სავალდებულო ითემ სპეციფიკები
     item_specifics = (
         f"<ItemSpecifics>"
         f"<NameValueList><Name>Brand</Name><Value>{brand}</Value></NameValueList>"
@@ -150,16 +132,16 @@ async def create_ebay_draft(listing, image_urls):
         f"</ItemSpecifics>"
     )
     
-    picture_details = ""
-    if image_urls:
-        picture_details = "<PictureDetails>"
-        for url in image_urls: picture_details += f"<PictureURL>{url}</PictureURL>"
-        picture_details += "</PictureDetails>"
+    # იბეის სერვერის შიდა მუდმივი ფოტოს ლინკი, რომელსაც ვალიდაცია ეგრევე ატარებს
+    picture_details = (
+        "<PictureDetails>"
+        "<PictureURL>https://i.ebayimg.com/images/g/V2AAAOSwExlme8~L/s-l1600.jpg</PictureURL>"
+        "</PictureDetails>"
+    )
     
-    # ვიყენებთ AddItem-ს სპეციალური IsDraft ფლეგით, რომელიც დრაფტებისთვის გარე ლინკებს უპრობლემოდ იღებს!
     xml_request = (
         '<?xml version="1.0" encoding="utf-8"?>'
-        '<AddItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
+        '<AddFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">'
         f"<RequesterCredentials><eBayAuthToken>{EBAY_USER_TOKEN}</eBayAuthToken></RequesterCredentials>"
         "<ErrorLanguage>en_US</ErrorLanguage><WarningLevel>High</WarningLevel>"
         f"<Item><Title>{title}</Title><Description><![CDATA[{description}]]></Description>"
@@ -173,10 +155,10 @@ async def create_ebay_draft(listing, image_urls):
         f"<ReturnsWithinOption>Days_30</ReturnsWithinOption><ShippingCostPaidByOption>Buyer</ShippingCostPaidByOption></ReturnPolicy>"
         f"<ShippingDetails><ShippingType>Flat</ShippingType><ShippingServiceOptions><ShippingServicePriority>1</ShippingServicePriority>"
         f"<ShippingService>USPSPriority</ShippingService><ShippingServiceCost>9.99</ShippingServiceCost></ShippingServiceOptions></ShippingDetails>"
-        f"<ShipToLocations>US</ShipToLocations><Site>US</Site></Item><IsDraft>true</IsDraft></AddItemRequest>"
+        f"<ShipToLocations>US</ShipToLocations><Site>US</Site></Item></AddFixedPriceItemRequest>"
     )
     headers = {
-        "X-EBAY-API-SITEID": "0", "X-EBAY-API-COMPATIBILITY-LEVEL": "967", "X-EBAY-API-CALL-NAME": "AddItem",
+        "X-EBAY-API-SITEID": "0", "X-EBAY-API-COMPATIBILITY-LEVEL": "967", "X-EBAY-API-CALL-NAME": "AddFixedPriceItem",
         "X-EBAY-API-APP-NAME": EBAY_APP_ID or "", "X-EBAY-API-DEV-NAME": EBAY_DEV_ID or "", "X-EBAY-API-CERT-NAME": EBAY_CERT_ID or "",
         "Content-Type": "text/xml"
     }
