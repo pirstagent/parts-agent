@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY")
 EBAY_APP_ID = os.environ.get("EBAY_APP_ID")
+EBAY_DEV_ID = os.environ.get("EBAY_DEV_ID")
+EBAY_CERT_ID = os.environ.get("EBAY_CERT_ID")
 EBAY_USER_TOKEN = os.environ.get("EBAY_USER_TOKEN")
 PAYPAL_EMAIL = os.environ.get("PAYPAL_EMAIL", "zurabgelenidze1@gmail.com")
 
@@ -124,11 +126,11 @@ async def call_claude(part_number, photos):
         "You are an expert eBay auto parts specialist. Analyze this auto part.\n"
         "Part Number: " + (part_number or "See image") + "\n\n"
         "Provide complete eBay listing details.\n"
-        "IMPORTANT: Use category_id 6030 which is valid for eBay Motors Parts and Accessories.\n\n"
+        "Use category_id 6030 for Parts and Accessories on eBay Motors.\n\n"
         "Respond ONLY with valid JSON, no markdown, no extra text:\n"
         "{\n"
         '  "title": "eBay title max 80 chars SEO optimized with part number",\n'
-        '  "description": "Detailed description 3-4 paragraphs plain text no HTML",\n'
+        '  "description": "Detailed description 3-4 paragraphs plain text",\n'
         '  "category_id": "6030",\n'
         '  "condition": "Used",\n'
         '  "suggested_price": 25,\n'
@@ -229,6 +231,8 @@ async def create_ebay_draft(listing):
         "X-EBAY-API-COMPATIBILITY-LEVEL": "967",
         "X-EBAY-API-CALL-NAME": "AddItem",
         "X-EBAY-API-APP-NAME": EBAY_APP_ID or "",
+        "X-EBAY-API-DEV-NAME": EBAY_DEV_ID or "",
+        "X-EBAY-API-CERT-NAME": EBAY_CERT_ID or "",
         "Content-Type": "text/xml"
     }
 
